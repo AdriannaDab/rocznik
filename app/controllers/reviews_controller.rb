@@ -1,11 +1,14 @@
 class ReviewsController < ApplicationController
   before_action :admin_required
+  layout "admin"
+  before_action -> {set_title "Recenzje"}
 
   def index
+    @reviews = Review.order('deadline asc').all
     @query_params = params[:q] || {}
     @query = Review.ransack(@query_params)
     @query.sorts = ['deadline asc'] if @query.sorts.empty?
-    @reviews = @query.result(distinct: true)
+    @reviews = @query.result(distinct: true).page(params[:page]).per(20)
   end
 
   def show
@@ -16,7 +19,8 @@ class ReviewsController < ApplicationController
     @review = Review.new
     if params[:submission_id]
       submission = Submission.find(params[:submission_id])
-      @review.article_revision = submission.article_revisions.order(:created_at).last
+      @review.article_revision = submission.last_revision
+      @from = submission_path(submission)
       if @review.article_revision.nil?
         flash[:error] = 'Zgłoszenie nie posiada przypisanych wersji!'
         redirect_to submission
@@ -26,6 +30,7 @@ class ReviewsController < ApplicationController
     if params[:person_id]
       person = Person.find(params[:person_id])
       @review.person = person
+      @from = person_path(person)
     end
     @review.status = 'wysłane zapytanie'
     @review.asked = Time.now
@@ -34,25 +39,16 @@ class ReviewsController < ApplicationController
 
   def create
     @review = Review.new(review_params)
-    if params[:article_revision_id]
-      article_revision = ArticleRevision.find(params[:article_revision_id])
-      @review.article_revision = article_revision
-      if @review.save
-        redirect_to article_revision.submission
+    if @review.save
+      if params[:from]
+        redirect_to params[:from]
       else
-        render :new
-      end
-    elsif params[:person_id]
-      person = Person.find(params[:person_id])
-      @review.person = person
-      if @review.save
-        redirect_to person
-      else
-        render :new
+        flash[:error] = 'Niepoprawne wywołanie'
+        redirect_to submissions_path
       end
     else
-      flash[:error] = 'Niepoprawne wywołanie'
-      redirect_to submissions_path
+      @from = params[:from]
+      render :new
     end
   end
 
@@ -73,6 +69,41 @@ class ReviewsController < ApplicationController
     review = Review.find(params[:id])
     review.destroy
     redirect_to review.submission
+  end
+
+  def send_reminder
+    review = Review.find(params[:id])
+    ReviewerMailer.reminder(review).deliver_now
+    redirect_to review.submission, flash: {notice: "Przypomnienie zostało wysłane"}
+  end
+ 
+  def ask
+    review = Review.find(params[:id])
+    ReviewMailer.ask(review).deliver_now
+    redirect_to review.submission, flash: {notice: "Zapytanie zostało wysłane"}
+  end
+
+  def accepted
+    review = Review.find(params[:id])
+    review.status = 'recenzja przyjęta'
+    review.save
+    ReviewMailer.send_status(review).deliver_now
+    redirect_to review.submission, flash: {notice: "Dziękujemy"}
+   
+  end
+
+  def rejected
+    review = Review.find(params[:id])
+    review.status = 'recenzja odrzucona'
+    review.save
+    ReviewMailer.send_status(review).deliver_now
+    redirect_to review.submission, flash: {notice: "Recenzja została odrzucona"} 
+  end
+
+  def ask_for_review
+    review = Review.find(params[:id])
+    ReviewMailer.ask_for_review(review).deliver_now
+    redirect_to review.submission, flash: {notice: "Zapytanie zostało wysłane"}
   end
 
   private

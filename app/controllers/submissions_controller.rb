@@ -2,11 +2,13 @@
 
 class SubmissionsController < ApplicationController
   before_action :admin_required
+  layout "admin"
+  before_action -> {set_title "Zgłoszone artykuły"}
 
   def index
     @query_params = params[:q] || {}
     @query = Submission.ransack(@query_params)
-    @query.sorts = ['received asc'] if @query.sorts.empty?
+    @query.sorts = ['received desc'] if @query.sorts.empty?
     @submissions = @query.result(distinct: true)
   end
 
@@ -28,6 +30,7 @@ class SubmissionsController < ApplicationController
       if @author_id
         authorship = Authorship.new(person_id: @author_id,submission: @submission)
         authorship.save
+	       SubmissionMailer.confirmation(@submission).deliver_now
       end
       redirect_to @submission
     else
@@ -41,7 +44,10 @@ class SubmissionsController < ApplicationController
 
   def update
     @submission = Submission.find(params[:id])
+    old_status = @submission.status
+    new_status = submission_params[:status]
     if @submission.update_attributes(submission_params)
+      check_status(old_status,new_status)
       redirect_to @submission
     else
       render :edit
@@ -51,12 +57,30 @@ class SubmissionsController < ApplicationController
   def destroy
     submission = Submission.find(params[:id])
     submission.destroy
+    flash[:error] = 'nie usunięto zgłoszenia' if !submission.destroyed?
     redirect_to submissions_path
   end
 
   private
   def submission_params
-    params.require(:submission).permit(:issue_id,:status,:language,:received,:funding,:remarks,:polish_title,:polish_abstract,:polish_keywords,:english_title,:english_abstract,:english_keywords,:person_id)
+    params.require(:submission).permit(:issue_id,:status,:language,:received,:funding,
+                                       :remarks,:polish_title,:english_title,:english_abstract,
+                                       :english_keywords,:person_id,:follow_up_id)
   end
 
+  def check_status(old_status,new_status)
+    if old_status != new_status
+      if new_status == 'odrzucony' || new_status == 'do poprawy' || new_status == 'przyjęty'
+        submission = Submission.find(params[:id])
+        SubmissionMailer.send_decision(submission).deliver_now
+      end
+      if new_status == 'przyjęty'
+        authors = Submission.find(params[:id]).authors
+        authors.each do |author|
+          SubmissionMailer.send_contract(author).deliver_now
+        end
+        SubmissionMailer.send_contract(submission).deliver_now
+      end
+    end
+  end
 end

@@ -1,9 +1,12 @@
 class Affiliation < ActiveRecord::Base
-  validates :person_id, presence: true
+  validates :person_id, presence: true, uniqueness: {scope: :department}
   validates :department_id, presence: true
 
   belongs_to :person
   belongs_to :department
+
+  scope :current, -> { where("year_from <= #{Date.today.year} OR year_from IS NULL").
+                       where("year_to >= #{Date.today.year} OR year_to IS NULL") }
 
   def person_name
     self.person.full_name
@@ -19,6 +22,10 @@ class Affiliation < ActiveRecord::Base
 
   def country
     self.department.country
+  end
+
+  def country_name
+    self.department.institution.country_name
   end
 
   def institution

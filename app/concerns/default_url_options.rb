@@ -4,16 +4,18 @@ module DefaultUrlOptions
 
   def default_url_options
     {
-      :host => host,
-      :port => port
+    host: host,
+    port: port
     }
   end
 
-private
+  private
 
   def host
     if Rails.env.staging?
       "dev.kognitywistyka.eu"
+    elsif Rails.env.development?
+      "localhost"
     else
       "rocznik.kognitywistyka.eu"
     end

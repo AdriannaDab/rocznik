@@ -11,4 +11,17 @@
 /log/*
 !/log/.keep
 /tmp
+*~
 public/uploads
+.*sw?
+.idea
+public/assets/*.png
+public/assets/*.gz
+public/assets/*.js
+public/assets/*.jpg
+public/assets/*.css
+public/assets/font-awesome
+public/assets/fallback
+public/assets/storytime
+public/assets/admin
+public/assets/bootstrap
